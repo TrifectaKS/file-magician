@@ -15,11 +15,13 @@ import DropZone from './components/drop-zone.vue'
 
 <style>
 h1 {
-  color: red;
+  color: #FAF4D3;
 }
 
 .container {
   display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .bg {
