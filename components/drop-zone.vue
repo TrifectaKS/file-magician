@@ -10,17 +10,23 @@
       <ul v-if="filesData.length">
         <li v-for="(file, index) in filesData" :key="index">
           <div class="dropzone-list-item">
-            <div>
-              <span class="cancel-icon">X</span> {{ file.nameTruncated }}
+            <div class="dropzone-list-item-name">
+              <span class="cancel-icon" @click.stop="remove(file)">X</span> {{ file.nameTruncated }}
             </div>
-            <button>download</button>
-              <select @click.stop v-model="file.targetType" id="convertTo">
+            <div v-if="!file.converting && file.converted">
+              <button class="download-button" @click.stop="download(file)">Download</button>
+            </div>
+            <div v-else-if="!file.converting && !file.converted">
+              <select @click.stop v-model="file.targetType">
                 <option disabled value="">Convert to...</option>
-                <option value="mp3">MP3</option>
-                <option value="mp4">MP4</option>
-                <option value="jpeg">JPEG</option>
+                <option v-for="type in file.availableTypes" :value="type">
+                  {{ type.toUpperCase() }}
+                </option>
               </select>
-            
+            </div>
+            <div v-else-if="file.converting">
+              <span>Converting...</span>
+            </div>
           </div>
         </li>
       </ul>
@@ -28,7 +34,7 @@
     <input type="file" multiple ref="fileInput" @change="onFileChange" style="display: none" />
   </div>
 
-  <button class="convert-button">Convert</button>
+  <button class="convert-button" @click="convert">Convert</button>
 </template>
 
 
@@ -80,10 +86,13 @@
 
 .dropzone-list-item {
   display: flex;
-  padding-left: 5vh;
-  padding-right: 5vh;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  padding: 1rem 5vh;
+}
+
+.dropzone-list-item-name {
+  text-align: left;
 }
 
 ul {
@@ -97,7 +106,6 @@ li {
 }
 
 button {
-  margin-top: 10px;
   cursor: pointer;
 }
 
@@ -110,21 +118,34 @@ button {
   border-radius: 20px;
 }
 
+.download-button {
+  width: 141px;
+  height: 33px;
+  background-color: red;
+  border: none;
+  color: #FAF4D3;
+  border-radius: 20px;
+}
+
 select {
-  color: white;                     /* Text color */
-  background-color: #2c3e50;        /* Main background */
-  padding: 8px 36px 8px 12px;       /* Right padding leaves space for arrow */
+  color: #FAF4D3;
+  background-color: #2c3e50;
+  padding: 8px 36px 8px 12px;
   border: none;
   border-radius: 6px;
   cursor: pointer;
 }
-
 </style>
 
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { FileModel } from '~/models/file.model'
+import { getPossibleExtensions, loadFFmpeg, loadFile } from '~/services/ffmpeg.service';
+
+if (import.meta.client) {
+  await loadFFmpeg();
+}
 
 // Refs
 const filesData = ref<FileModel[]>([])
@@ -154,12 +175,21 @@ function onFileChange(event: Event): void {
   }
 }
 
+function remove(file: FileModel): void {
+  filesData.value = filesData.value.filter(f => f !== file);
+}
+
+function download(file: FileModel): void {
+
+}
+
+
 function openFileDialog(): void {
   fileInput.value?.click()
 }
 
 // File handling
-function addFiles(fileList: FileList): void {
+async function addFiles(fileList: FileList): Promise<void> {
   const arr = Array.from(fileList)
   const mapped = arr.map(file => ({
     name: file.name,
@@ -172,10 +202,29 @@ function addFiles(fileList: FileList): void {
     convertProgress: 0,
     targetType: '',
     data: file,
+    availableTypes: [] as string[]
   }))
   filesData.value.push(...mapped)
+
+  for (const f of filesData.value) {
+    const p = await loadFile(f);
+    f.fileType = p ?? '';
+
+    const detectedFormat = p;
+    const fallbackExtension = getExtensionFromFileName(f.name);
+
+    f.availableTypes = getPossibleExtensions(detectedFormat ?? fallbackExtension);
+  }
 }
 
+function getValidFiles(): FileModel[] {
+  return filesData.value.filter(x => x.targetType != null && x.targetType != undefined && x.targetType.trim() !== "");
+}
+
+async function convert(): Promise<void> {
+  const validFiles = getValidFiles()
+  validFiles.forEach(x => x.converted = true);
+}
 
 // Utils
 function truncateFilename(filename: string, maxBaseLength: number): string {
@@ -197,10 +246,8 @@ function truncateFilename(filename: string, maxBaseLength: number): string {
   return name.slice(0, maxBaseLength) + '~' + ext;
 }
 
-function formatSize(bytes: number): string {
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  if (bytes === 0) return '0 Bytes'
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i]
+function getExtensionFromFileName(fileName: string): string {
+  const match = fileName.match(/\.([^.]+)$/);
+  return match ? match[1].toLowerCase() : '';
 }
 </script>

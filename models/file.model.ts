@@ -7,4 +7,6 @@ export interface FileModel {
     convertProgress: number;
     targetType: string;
     data: File;
+    fileType: string;
+    availableTypes: string[];
 }
