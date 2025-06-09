@@ -14,7 +14,7 @@
               <span class="cancel-icon" @click.stop="remove(file)">X</span> {{ file.nameTruncated }}
             </div>
             <div v-if="!file.converting && file.converted">
-              <button class="download-button" @click.stop="download(file)">Download</button>
+              <button class="download-button" @click.stop="download(file)">Download {{ file.targetType }}</button>
             </div>
             <div v-else-if="!file.converting && !file.converted">
               <select @click.stop v-model="file.targetType">
@@ -141,7 +141,7 @@ select {
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { FileModel } from '~/models/file.model'
-import { getPossibleExtensions, loadFFmpeg, loadFile } from '~/services/ffmpeg.service';
+import { audioFormats, convertImage, downloadFile, getPossibleExtensions, imageFormats, loadFFmpeg, loadFile, videoFormats } from '~/services/ffmpeg.service';
 
 if (import.meta.client) {
   await loadFFmpeg();
@@ -180,7 +180,9 @@ function remove(file: FileModel): void {
 }
 
 function download(file: FileModel): void {
-
+  if (file.resultData) {
+    downloadFile(file);
+  }
 }
 
 
@@ -194,16 +196,17 @@ async function addFiles(fileList: FileList): Promise<void> {
   const mapped = arr.map(file => ({
     name: file.name,
     nameTruncated: truncateFilename(file.name, 10),
+    nameNoExtension: removeExtension(file.name),
     sizeBytes: file.size,
     fileType: file.type || 'unknown',
     file: file,
     converted: false,
     converting: false,
-    convertProgress: 0,
     targetType: '',
     data: file,
-    availableTypes: [] as string[]
-  }))
+    availableTypes: [] as string[],
+    resultData: null
+  }) as FileModel)
   filesData.value.push(...mapped)
 
   for (const f of filesData.value) {
@@ -223,7 +226,36 @@ function getValidFiles(): FileModel[] {
 
 async function convert(): Promise<void> {
   const validFiles = getValidFiles()
-  validFiles.forEach(x => x.converted = true);
+  validFiles.forEach(async x => {
+    x.converting = true;
+    x.converted = false;
+    if (imageFormats.includes(x.targetType)) {
+      await convertImage(x).then(res => {
+        console.log(res);
+        x.converting = false;
+        x.converted = res;
+      });
+      return
+    }
+    if (videoFormats.includes(x.targetType)) {
+      /*convertImage(x).then(res => {
+        console.log(res);
+        x.converting = false;
+        x.converted = res;
+      });*/
+      return
+    }
+    if (audioFormats.includes(x.targetType)) {
+      /*convertImage(x).then(res => {
+        console.log(res);
+        x.converting = false;
+        x.converted = res;
+      });*/
+      return
+    }
+    x.converting = false;
+    x.converted = false;
+  });
 }
 
 // Utils
@@ -250,4 +282,11 @@ function getExtensionFromFileName(fileName: string): string {
   const match = fileName.match(/\.([^.]+)$/);
   return match ? match[1].toLowerCase() : '';
 }
+
+function removeExtension(fileName: string): string {
+  const lastDotIndex = fileName.lastIndexOf('.');
+  if (lastDotIndex === -1) return fileName;
+  return fileName.substring(0, lastDotIndex);
+}
+
 </script>
